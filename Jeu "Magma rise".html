@@ -1,0 +1,193 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Magma rise</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body { overflow: hidden; background: black; }
+        canvas { display: block; }
+    </style>
+</head>
+<body>
+    <canvas id="gameCanvas"></canvas>
+
+    <script>
+        const canvas = document.getElementById("gameCanvas");
+        const ctx = canvas.getContext("2d");
+        canvas.width = window.innerWidth;
+        canvas.height = window.innerHeight;
+
+        const gravity = 0.5;
+        const friction = 0.92;  // Meilleure inertie
+        let canJump = true;
+
+        let player = { 
+            x: canvas.width / 2, 
+            y: canvas.height - 100, 
+            width: 30, 
+            height: 30, 
+            dx: 0, 
+            dy: 0, 
+            speed: 0.8,  
+            maxSpeed: 5, 
+            jumpPower: -10, 
+            onGround: false 
+        };
+
+        let platforms = [
+            { x: 0, y: canvas.height - 20, width: canvas.width, height: 20 }, 
+            { x: 100, y: canvas.height - 100, width: 200, height: 10 },
+            { x: 400, y: canvas.height - 200, width: 200, height: 10 },
+            { x: 600, y: canvas.height - 300, width: 200, height: 10 }
+        ];
+
+        let keys = {};
+        let scrollOffset = 0;
+
+        document.addEventListener("keydown", (e) => { 
+            keys[e.code] = true; 
+        });
+
+        document.addEventListener("keyup", (e) => { 
+            keys[e.code] = false; 
+            if (e.code === "Space") canJump = true; // Reset du saut quand on relâche espace
+        });
+
+        function addPlatform() {
+            let lastPlatform = platforms[platforms.length - 1];
+
+            let minGapY = 100;  // Hauteur minimale entre plateformes
+            let maxGapY = 105; // Hauteur maximale faisable par un saut
+            let minGapX = -180; // Décalage horizontal minimum (peut être négatif)
+            let maxGapX = 200;  // Décalage horizontal maximum
+
+            let newX, newY, tries = 0;
+            do {
+                newX = lastPlatform.x + minGapX + Math.random() * (maxGapX - minGapX);
+                newY = lastPlatform.y - (minGapY + Math.random() * (maxGapY - minGapY));
+                tries++;
+            } while ((newX < 0 || newX + 200 > canvas.width) && (newX > -100 || newX < 100) && tries < 10); // S'assurer qu'on reste dans l'écran
+
+            platforms.push({
+                x: Math.max(0, Math.min(canvas.width - 200, newX)), // S'assurer qu'elle est dans l'écran
+                y: newY,
+                width: 200,
+                height: 10
+            });
+        }
+
+
+        function update() {
+            player.dy += gravity;
+            
+            if (keys["ArrowLeft"]) player.dx -= player.speed;
+            if (keys["ArrowRight"]) player.dx += player.speed;
+
+            player.dx *= friction;
+
+            if (player.dx > player.maxSpeed) player.dx = player.maxSpeed;
+            if (player.dx < -player.maxSpeed) player.dx = -player.maxSpeed;
+
+            player.x += player.dx;
+            player.y += player.dy;
+
+            if (player.x < 0) player.x = 0;
+            if (player.x + player.width > canvas.width) player.x = canvas.width - player.width;
+
+            let prevOnGround = player.onGround;
+            player.onGround = false;
+
+            for (let plat of platforms) {
+                if (player.y + player.height >= plat.y && player.y + player.height <= plat.y + 10 && 
+                    player.x + player.width >= plat.x && player.x <= plat.x + plat.width && player.dy >= 0) {
+                    player.y = plat.y - player.height;
+                    player.dy = 0;
+                    player.onGround = true;
+                    break; 
+                }
+            }
+
+            if (keys["Space"] && player.onGround && canJump) {
+                player.dy = player.jumpPower;
+                canJump = false; // Empêche les sauts enchaînés
+            }
+
+            if (player.y < canvas.height / 2) {
+                let diff = canvas.height / 2 - player.y;
+                scrollOffset += diff;
+                player.y += diff;
+                platforms.forEach(plat => plat.y += diff);
+            }
+
+            if (platforms[platforms.length - 1].y > 50) {
+                addPlatform();
+            }
+
+            function showEndingMessage(message) {
+                // Créer un élément div
+                let messageBox = document.createElement("div");
+    
+                // Ajouter du texte au message
+                messageBox.innerHTML = message + "<br><br>😎 Rejoue en rechargeant la page 😉";
+    
+                // Appliquer du style en JS (pour qu'il soit visible)
+                messageBox.style.position = "fixed";
+                messageBox.style.top = "50%";
+                messageBox.style.left = "50%";
+                messageBox.style.transform = "translate(-50%, -50%)";
+                messageBox.style.background = "rgba(0, 0, 0, 0.8)";
+                messageBox.style.color = "white";
+                messageBox.style.fontSize = "24px";
+                messageBox.style.padding = "20px";
+                messageBox.style.borderRadius = "100px";
+                messageBox.style.textAlign = "center";
+                messageBox.style.zIndex = "9999";
+    
+                // Ajouter au body
+                document.body.appendChild(messageBox);
+
+            }
+
+            if (player.y > canvas.height) {
+                showEndingMessage("🔥 GAME OVER ! Tu es tombé en Enfer ! 🔥");
+            }
+        }
+
+        function getBackgroundColor() {
+            let progress = scrollOffset / 75000;
+            if (progress < 0.25) return `rgb(${progress * 1020}, 0, 0)`;
+            if (progress < 0.5) return `rgb(255, ${(progress - 0.25) * 1020}, 0)`;
+            if (progress < 0.75) return `rgb(255, 255, ${(progress - 0.5) * 1020})`;
+            return `rgb(${255 - (progress - 0.75) * 1020}, 255, 255)`;
+        }
+
+        function draw() {
+            ctx.fillStyle = getBackgroundColor();
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+            ctx.fillStyle = "red";
+            ctx.beginPath();
+            ctx.moveTo(player.x, player.y + player.height);
+            ctx.lineTo(player.x + player.width / 2, player.y);
+            ctx.lineTo(player.x + player.width, player.y + player.height);
+            ctx.closePath();
+            ctx.fill();
+
+            ctx.fillStyle = "white";
+            platforms.forEach(plat => {
+                ctx.fillRect(plat.x, plat.y, plat.width, plat.height);
+            });
+        }
+
+        function gameLoop() {
+            update();
+            draw();
+            requestAnimationFrame(gameLoop);
+        }
+
+        gameLoop();
+    </script>
+</body>
+</html>
